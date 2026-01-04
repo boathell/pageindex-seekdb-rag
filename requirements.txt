@@ -38,6 +38,11 @@ jupyter>=1.0.0               # Jupyter笔记本
 matplotlib>=3.7.0            # 可视化
 seaborn>=0.12.0              # 统计可视化
 
+# FastAPI Web框架
+fastapi>=0.109.0             # Web API框架
+uvicorn[standard]>=0.27.0    # ASGI服务器
+python-multipart>=0.0.6      # 文件上传支持
+
 # 可选：LangChain集成
 langchain>=0.1.0             # LangChain框架
 langchain-openai>=0.0.5      # OpenAI集成

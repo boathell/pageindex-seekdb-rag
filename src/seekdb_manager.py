@@ -433,11 +433,11 @@ class SeekDBManager:
         try:
             nodes_col = self.client.get_collection(self.nodes_collection)
             chunks_col = self.client.get_collection(self.chunks_collection)
-            
+
             # 获取文档数量
             nodes_count = nodes_col.count()
             chunks_count = chunks_col.count()
-            
+
             return {
                 "total_nodes": nodes_count,
                 "total_chunks": chunks_count,
@@ -448,6 +448,50 @@ class SeekDBManager:
             return {
                 "error": str(e)
             }
+
+    def get_stats(self) -> Dict[str, Any]:
+        """get_statistics 的别名，用于 API 兼容性"""
+        return self.get_statistics()
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """
+        列出所有已索引的文档
+
+        Returns:
+            文档列表，每个文档包含 document_id 和统计信息
+        """
+        try:
+            nodes_col = self.client.get_collection(self.nodes_collection)
+
+            # 获取所有根节点（level=0）来识别文档
+            result = nodes_col.get(
+                where={"level": 0},
+                include=["metadatas"]
+            )
+
+            # 提取唯一的 document_id
+            documents = {}
+            if result and result.get('metadatas'):
+                for metadata in result['metadatas']:
+                    doc_id = metadata.get('document_id')
+                    if doc_id and doc_id not in documents:
+                        # 统计该文档的节点和块数
+                        nodes_count = nodes_col.count(where={"document_id": doc_id})
+                        chunks_col = self.client.get_collection(self.chunks_collection)
+                        chunks_count = chunks_col.count(where={"document_id": doc_id})
+
+                        documents[doc_id] = {
+                            "document_id": doc_id,
+                            "total_nodes": nodes_count,
+                            "total_chunks": chunks_count,
+                            "title": metadata.get('title', 'Unknown')
+                        }
+
+            return list(documents.values())
+
+        except Exception as e:
+            logger.error(f"Failed to list documents: {e}")
+            return []
 
 
 # 测试代码

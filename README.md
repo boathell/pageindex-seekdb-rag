@@ -165,7 +165,54 @@ cd ../..
 
 ## 🚀 使用示例
 
-### 示例1：文档索引
+### 示例0：启动 API 服务（推荐）
+
+```bash
+# 启动 API 服务
+./start_api.sh
+
+# 或手动启动
+python -m uvicorn src.api_server:app --reload --host 0.0.0.0 --port 8000
+
+# 访问 API 文档
+# Swagger UI: http://localhost:8000/docs
+# ReDoc: http://localhost:8000/redoc
+```
+
+**使用 API 进行索引和检索**:
+
+```python
+import requests
+
+# 1. 索引文档
+response = requests.post(
+    "http://localhost:8000/index",
+    json={
+        "document_id": "my_doc",
+        "pdf_path": "data/sample.pdf"
+    }
+)
+print(response.json())
+
+# 2. 检索
+response = requests.post(
+    "http://localhost:8000/search",
+    json={
+        "query": "文档的主要主题是什么？",
+        "document_id": "my_doc",
+        "strategy": "hybrid",
+        "top_k": 5
+    }
+)
+results = response.json()
+for item in results['results']:
+    print(f"Score: {item['score']:.4f}")
+    print(f"Content: {item['content'][:200]}...")
+```
+
+详细的 API 文档请参考：[API文档](docs/api.md)
+
+### 示例1：直接使用 Python SDK - 文档索引
 
 ```python
 from src.document_indexer import DocumentIndexer

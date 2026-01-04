@@ -164,30 +164,13 @@ MODEL_NAME=qwen-max
 BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 # Embedding 配置
-# 推荐使用异步模型以获得更好的性能
-OPENAI_EMBEDDING_MODEL=text-embedding-async-v2
-
-# 或使用同步模型（批量限制 25 个文本）
-# OPENAI_EMBEDDING_MODEL=text-embedding-v2
+OPENAI_EMBEDDING_MODEL=text-embedding-v2
 
 # PageIndex 配置
 PAGEINDEX_MODEL=qwen-max
 ```
 
 > **获取 Qwen API Key**: https://dashscope.console.aliyun.com/apiKey
-
-**⚡ 性能提示**：
-- **推荐使用 `text-embedding-async-v2`** - 高性能异步模型
-  - 单次请求最大 **10 万行**文本
-  - 单行最大 **2048 tokens**
-  - 数据类型：float32
-  - 维度：1536
-  - 完全解决批量限制问题
-
-- `text-embedding-v2` - 同步模型（备选）
-  - 单次请求限制 **25 个文本**
-  - 需要自动分批处理
-  - 维度：1536
 
 #### 3. seekdb 配置
 
@@ -227,20 +210,14 @@ PAGEINDEX_MAX_TOKENS_PER_NODE=20000
 
 不同的 embedding 模型使用不同的向量维度：
 
-| Embedding 模型 | 维度 | 配置值 | 批量限制 | 性能 |
-|--------------|------|--------|---------|------|
-| text-embedding-async-v2 (Qwen) ⭐ | 1536 | `EMBEDDING_DIMS=1536` | 10万行/请求 | 极高 |
-| text-embedding-v2 (Qwen) | 1536 | `EMBEDDING_DIMS=1536` | 25个文本/请求 | 中等 |
-| text-embedding-3-small (OpenAI) | 1536 | `EMBEDDING_DIMS=1536` | 2048个文本/请求 | 高 |
-| text-embedding-3-large (OpenAI) | 3072 | `EMBEDDING_DIMS=3072` | 2048个文本/请求 | 高 |
-| text-embedding-ada-002 (OpenAI) | 1536 | `EMBEDDING_DIMS=1536` | 2048个文本/请求 | 中等 |
+| Embedding 模型 | 维度 | 配置值 |
+|--------------|------|--------|
+| text-embedding-3-small | 1536 | `EMBEDDING_DIMS=1536` |
+| text-embedding-3-large | 3072 | `EMBEDDING_DIMS=3072` |
+| text-embedding-v2 (Qwen) | 1536 | `EMBEDDING_DIMS=1536` |
+| text-embedding-ada-002 | 1536 | `EMBEDDING_DIMS=1536` |
 
 ⚠️ **重要**: `EMBEDDING_DIMS` 必须与你选择的 embedding 模型维度匹配！
-
-💡 **推荐配置**:
-- **大规模文档处理**: 使用 `text-embedding-async-v2` (Qwen) - 极高吞吐量
-- **国际部署**: 使用 `text-embedding-3-small` (OpenAI) - 平衡性能和成本
-- **高精度需求**: 使用 `text-embedding-3-large` (OpenAI) - 最高精度
 
 ## 测试验证
 
@@ -376,26 +353,13 @@ conn.commit()
 
 **错误信息**: `batch size is invalid, it should not be larger than 25`
 
-**原因**: 使用 `text-embedding-v2` 模型时单次最多支持 25 个文本
+**原因**: Qwen embedding API 单次最多支持 25 个文本
 
-**推荐解决方案** ⭐:
-```bash
-# 在 .env 文件中切换到异步模型
-OPENAI_EMBEDDING_MODEL=text-embedding-async-v2
-```
-
-**优势**:
-- ✅ 单次请求支持 **10 万行**文本
-- ✅ 无需分批处理
-- ✅ 性能提升 **数百倍**
-- ✅ 相同的 1536 维度输出
-
-**备选方案**（如果必须使用同步模型）:
+**解决方案**: 代码已自动处理分批，如果仍有问题，检查 EmbeddingManager 配置：
 ```python
 # src/embedding_manager.py
 batch_size = 25  # 确保不超过 25
 ```
-代码已自动处理分批，但会影响性能。
 
 ### Q4: PageIndex 输出文件找不到
 

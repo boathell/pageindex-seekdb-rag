@@ -118,13 +118,13 @@ SEEKDB_DATABASE=rag_system
 EMBEDDING_DIMS=1536
 ```
 
-**配置方式二：使用 Qwen-Max API（阿里云 DashScope）⭐ 推荐**
+**配置方式二：使用 Qwen-Max API（阿里云 DashScope）**
 ```bash
 # Qwen-Max 配置
 API_KEY=your_dashscope_api_key_here
 MODEL_NAME=qwen-max
 BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-OPENAI_EMBEDDING_MODEL=text-embedding-async-v2
+OPENAI_EMBEDDING_MODEL=text-embedding-v2
 
 # PageIndex 配置
 PAGEINDEX_MODEL=qwen-max
@@ -136,8 +136,6 @@ SEEKDB_PORT=2881
 SEEKDB_DATABASE=rag_system
 EMBEDDING_DIMS=1536
 ```
-
-> **性能提示**: 推荐使用 `text-embedding-async-v2` 模型，单次请求支持 **10 万行**文本，性能远超同步模型 `text-embedding-v2`（限制 25 个文本/批次）。
 
 **配置方式三：使用 Embedded 模式（无需 Docker）**
 ```bash
@@ -353,14 +351,10 @@ vector_config = VectorSearchConfig(
 
 ## ⚠️ 已知问题
 
-### 1. Qwen Embedding API 批量限制 ✅ 已解决
+### 1. Qwen Embedding API 批量限制
 - **问题**: Qwen text-embedding-v2 API 单次最多支持 25 个文本
 - **影响**: 大批量 embedding 时会自动分批，可能导致速度较慢
-- **✅ 最佳解决方案**: 使用 `text-embedding-async-v2` 模型
-  - 单次请求支持 **10 万行**文本
-  - 性能提升 **数百倍**
-  - 配置：`OPENAI_EMBEDDING_MODEL=text-embedding-async-v2`
-- **备选方案**: 继续使用 text-embedding-v2，代码已自动实现分批处理（batch_size=25）
+- **解决方案**: EmbeddingManager 已自动实现分批处理（batch_size=25）
 
 ### 2. 文档分块性能优化
 - **问题**: 大型文档分块时可能耗时较长
@@ -372,11 +366,6 @@ vector_config = VectorSearchConfig(
 - **解决方案**: PageIndexParser 已支持新旧两种格式自动识别
 
 ## 📝 更新日志
-
-### v0.2.1 (2026-01-04)
-- ✅ 推荐使用 `text-embedding-async-v2` 模型（性能提升数百倍）
-- ✅ 完善文档：添加详细的模型对比和性能优化建议
-- ✅ 解决批量 embedding 性能瓶颈
 
 ### v0.2.0 (2026-01-04)
 - ✅ 支持 Qwen-Max API（阿里云 DashScope）

@@ -1,19 +1,19 @@
-# PageIndex + pyseekdb 混合RAG系统
+# PageIndex + seekdb 混合RAG系统
 
-> 结合结构化推理检索（PageIndex）和向量语义检索（pyseekdb）的新一代RAG系统
+> 结合结构化推理检索（PageIndex）和向量语义检索（seekdb）的新一代RAG系统
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 ## 🎯 项目简介
 
-本项目创新性地将 **PageIndex的层次化推理检索** 与 **pyseekdb的向量语义检索** 相结合，打造了一个高精度、可解释的RAG系统。相比传统向量RAG，本系统具有：
+本项目创新性地将 **PageIndex的层次化推理检索** 与 **seekdb的向量语义检索** 相结合，打造了一个高精度、可解释的RAG系统。相比传统向量RAG，本系统具有：
 
 - ✅ **更高的检索准确率** - 双路检索互补
 - ✅ **更好的长文档理解** - 树结构导航
 - ✅ **可解释的检索过程** - 基于推理路径
 - ✅ **灵活的检索策略** - 支持tree-only/vector-only/hybrid三种模式
-- ✅ **零部署成本** - 使用pyseekdb本地存储，无需部署数据库
+- ✅ **灵活的部署方式** - 支持Embedded本地存储和Docker服务器模式
 
 ## 🏗️ 系统架构
 
@@ -25,8 +25,8 @@
     ├─→ PageIndex树检索 (结构化推理)
     │   └─→ BFS遍历章节树
     │
-    └─→ pyseekdb向量检索 (语义匹配)
-        └─→ 本地HNSW向量索引
+    └─→ seekdb向量检索 (语义匹配)
+        └─→ AI原生混合搜索数据库
     │
     ▼
 结果融合 (加权排序)
@@ -42,9 +42,43 @@
 ### 1. 环境要求
 
 - Python 3.10+
-- OpenAI API Key
+- Docker & Docker Compose（Server模式）
+- OpenAI API Key 或 阿里云 DashScope API Key（支持 Qwen-Max）
 
-### 2. 安装依赖
+### 2. 启动 seekdb 数据库
+
+**方式一：使用 Docker Compose（推荐）**
+
+```bash
+# 启动seekdb服务器
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f seekdb
+```
+
+**方式二：直接使用 Docker**
+
+```bash
+docker run -d \
+  --name seekdb \
+  -p 2881:2881 \
+  -p 2886:2886 \
+  -v ./data/seekdb:/var/lib/oceanbase \
+  oceanbase/seekdb:latest
+```
+
+**方式三：使用 Embedded 模式（无需 Docker）**
+
+如果不想使用 Docker，可以在 `.env` 文件中设置：
+```
+SEEKDB_MODE=embedded
+```
+
+### 3. 安装 Python 依赖
 
 ```bash
 # 克隆项目
@@ -59,7 +93,7 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境变量
+### 4. 配置环境变量
 
 ```bash
 # 复制配置文件
@@ -69,13 +103,52 @@ cp .env.example .env
 vim .env
 ```
 
-必填配置：
-```
+**配置方式一：使用 OpenAI API**
+```bash
+# OpenAI 配置
 OPENAI_API_KEY=your_openai_api_key_here
-PYSEEKDB_PERSIST_DIR=./data/pyseekdb  # 本地向量数据库存储路径
+OPENAI_MODEL=gpt-4o-2024-11-20
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
+# seekdb配置 - Server模式（使用Docker）
+SEEKDB_MODE=server
+SEEKDB_HOST=127.0.0.1
+SEEKDB_PORT=2881
+SEEKDB_DATABASE=rag_system
+EMBEDDING_DIMS=1536
 ```
 
-### 4. 克隆PageIndex
+**配置方式二：使用 Qwen-Max API（阿里云 DashScope）**
+```bash
+# Qwen-Max 配置
+API_KEY=your_dashscope_api_key_here
+MODEL_NAME=qwen-max
+BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+OPENAI_EMBEDDING_MODEL=text-embedding-v2
+
+# PageIndex 配置
+PAGEINDEX_MODEL=qwen-max
+
+# seekdb配置
+SEEKDB_MODE=server
+SEEKDB_HOST=127.0.0.1
+SEEKDB_PORT=2881
+SEEKDB_DATABASE=rag_system
+EMBEDDING_DIMS=1536
+```
+
+**配置方式三：使用 Embedded 模式（无需 Docker）**
+```bash
+# API 配置（OpenAI 或 Qwen-Max）
+OPENAI_API_KEY=your_api_key_here
+
+# seekdb Embedded 模式
+SEEKDB_MODE=embedded
+SEEKDB_PERSIST_DIR=./data/pyseekdb
+EMBEDDING_DIMS=1536
+```
+
+### 5. 克隆PageIndex
 
 ```bash
 # 创建外部依赖目录
@@ -98,10 +171,16 @@ cd ../..
 from src.document_indexer import DocumentIndexer
 from src.config import config
 
-# 创建索引器
+# 创建索引器（使用配置文件中的seekdb设置）
 indexer = DocumentIndexer(
     openai_api_key=config.openai.api_key,
-    persist_directory=config.pyseekdb.persist_directory
+    seekdb_mode=config.seekdb.mode,
+    persist_directory=config.seekdb.persist_directory,
+    seekdb_host=config.seekdb.host,
+    seekdb_port=config.seekdb.port,
+    seekdb_user=config.seekdb.user,
+    seekdb_password=config.seekdb.password,
+    seekdb_database=config.seekdb.database
 )
 
 # 索引PDF文档
@@ -121,9 +200,15 @@ from src.seekdb_manager import SeekDBManager
 from src.embedding_manager import EmbeddingManager
 from src.config import config
 
-# 初始化组件
+# 初始化seekdb管理器
 db_manager = SeekDBManager(
-    persist_directory=config.pyseekdb.persist_directory
+    mode=config.seekdb.mode,
+    persist_directory=config.seekdb.persist_directory,
+    host=config.seekdb.host,
+    port=config.seekdb.port,
+    user=config.seekdb.user,
+    password=config.seekdb.password,
+    database=config.seekdb.database
 )
 
 embed_manager = EmbeddingManager(
@@ -263,6 +348,37 @@ vector_config = VectorSearchConfig(
     enable_rerank=False   # 启用重排序
 )
 ```
+
+## ⚠️ 已知问题
+
+### 1. Qwen Embedding API 批量限制
+- **问题**: Qwen text-embedding-v2 API 单次最多支持 25 个文本
+- **影响**: 大批量 embedding 时会自动分批，可能导致速度较慢
+- **解决方案**: EmbeddingManager 已自动实现分批处理（batch_size=25）
+
+### 2. 文档分块性能优化
+- **问题**: 大型文档分块时可能耗时较长
+- **状态**: 已识别，待优化
+- **临时方案**: 适当调整 `chunk_size` 和 `chunk_overlap` 参数
+
+### 3. PageIndex 输出格式兼容性
+- **问题**: PageIndex 不同版本输出格式可能不同
+- **解决方案**: PageIndexParser 已支持新旧两种格式自动识别
+
+## 📝 更新日志
+
+### v0.2.0 (2026-01-04)
+- ✅ 支持 Qwen-Max API（阿里云 DashScope）
+- ✅ 支持 seekdb Docker 服务器模式部署
+- ✅ 修复向量维度配置（支持 1536 维 embedding）
+- ✅ 优化 PageIndex 集成（支持新版输出格式）
+- ✅ 改进配置管理（Pydantic Settings v2）
+
+### v0.1.0 (2025-12-01)
+- 🎉 初始版本发布
+- ✅ PageIndex + seekdb 混合检索
+- ✅ 支持三种检索策略
+- ✅ seekdb Embedded 模式支持
 
 ## 📖 相关文档
 

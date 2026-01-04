@@ -453,12 +453,19 @@ if __name__ == "__main__":
     
     # 初始化组件
     db_manager = SeekDBManager(
-        persist_directory=config.pyseekdb.persist_directory
+        mode=config.seekdb.seekdb_mode,
+        persist_directory=config.seekdb.seekdb_persist_dir,
+        host=config.seekdb.seekdb_host,
+        port=config.seekdb.seekdb_port,
+        user=config.seekdb.seekdb_user,
+        password=config.seekdb.seekdb_password,
+        database=config.seekdb.seekdb_database
     )
-    
+
     embed_manager = EmbeddingManager(
-        api_key=config.openai.api_key,
-        model=config.openai.embedding_model
+        api_key=config.openai.get_api_key(),
+        model=config.openai.openai_embedding_model,
+        base_url=config.openai.base_url
     )
     
     # 创建检索引擎

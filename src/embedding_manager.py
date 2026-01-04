@@ -18,27 +18,35 @@ class EmbeddingManager:
         self,
         api_key: str,
         model: str = "text-embedding-3-small",
+        base_url: str = None,
         batch_size: int = 100,
         cache_size: int = 1000
     ):
         """
         初始化Embedding管理器
-        
+
         Args:
-            api_key: OpenAI API密钥
+            api_key: OpenAI 兼容 API 密钥
             model: Embedding模型名称
+            base_url: 自定义 API base URL（可选，用于兼容其他服务）
             batch_size: 批处理大小
             cache_size: 缓存大小
         """
-        self.client = OpenAI(api_key=api_key)
+        # 创建客户端，支持自定义 base_url
+        if base_url:
+            self.client = OpenAI(api_key=api_key, base_url=base_url)
+            logger.info(f"Using custom base_url: {base_url}")
+        else:
+            self.client = OpenAI(api_key=api_key)
+
         self.model = model
         self.batch_size = batch_size
-        
+
         # 设置缓存
         self._embed_single_cached = lru_cache(maxsize=cache_size)(
             self._embed_single
         )
-        
+
         logger.info(f"Initialized EmbeddingManager with model: {model}")
     
     def _embed_single(self, text: str) -> List[float]:

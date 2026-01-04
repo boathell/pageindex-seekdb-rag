@@ -20,8 +20,20 @@ class DocumentIndexer:
     def __init__(
         self,
         openai_api_key: str,
+        seekdb_mode: str = "server",
+        # Embedded模式参数
         persist_directory: str = "./data/pyseekdb",
+        # Server模式参数
+        seekdb_host: str = "127.0.0.1",
+        seekdb_port: int = 2881,
+        seekdb_user: str = "root",
+        seekdb_password: str = "",
+        seekdb_database: str = "rag_system",
+        # 其他参数
         pageindex_config: Optional[Dict[str, Any]] = None,
+        embedding_model: str = "text-embedding-3-small",
+        embedding_base_url: Optional[str] = None,
+        embedding_dims: int = 1536,
         chunk_size: int = 500,
         chunk_overlap: int = 50
     ):
@@ -30,28 +42,46 @@ class DocumentIndexer:
 
         Args:
             openai_api_key: OpenAI API密钥
-            persist_directory: pyseekdb本地存储目录
+            seekdb_mode: seekdb运行模式 ("embedded" 或 "server")
+            persist_directory: 本地存储目录（Embedded模式）
+            seekdb_host: seekdb服务器地址（Server模式）
+            seekdb_port: seekdb服务器端口（Server模式）
+            seekdb_user: 用户名（Server模式）
+            seekdb_password: 密码（Server模式）
+            seekdb_database: 数据库名称
             pageindex_config: PageIndex配置字典
+            embedding_model: Embedding模型名称
+            embedding_base_url: Embedding API端点
+            embedding_dims: 向量维度
             chunk_size: 文本块大小
             chunk_overlap: 文本块重叠大小
         """
         # 初始化组件
         self.parser = PageIndexParser(**(pageindex_config or {}))
 
-        self.db = SeekDBManager(persist_directory=persist_directory)
+        self.db = SeekDBManager(
+            mode=seekdb_mode,
+            persist_directory=persist_directory,
+            host=seekdb_host,
+            port=seekdb_port,
+            user=seekdb_user,
+            password=seekdb_password,
+            database=seekdb_database
+        )
 
         self.embed = EmbeddingManager(
             api_key=openai_api_key,
-            model="text-embedding-3-small"
+            model=embedding_model,
+            base_url=embedding_base_url
         )
 
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
         # 初始化数据库collections
-        self.db.initialize_collections()
+        self.db.initialize_collections(embedding_dims=embedding_dims)
 
-        logger.info("DocumentIndexer initialized")
+        logger.info(f"DocumentIndexer initialized (seekdb mode: {seekdb_mode})")
     
     def index_document(
         self,

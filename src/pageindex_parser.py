@@ -67,7 +67,7 @@ class PageIndexParser:
             self.script_path = Path(pageindex_script_path)
         else:
             # 默认路径：项目根目录/external/PageIndex
-            self.script_path = Path(__file__).parent.parent.parent / "external" / "PageIndex" / "run_pageindex.py"
+            self.script_path = Path(__file__).parent.parent / "external" / "PageIndex" / "run_pageindex.py"
         
         if not self.script_path.exists():
             logger.warning(f"PageIndex script not found at {self.script_path}")
@@ -108,11 +108,12 @@ class PageIndexParser:
         logger.info(f"Parsing PDF: {pdf_path}")
         logger.info(f"Output directory: {output_dir}")
         
-        # 构建命令
+        # 构建命令（使用绝对路径）
+        absolute_pdf_path = pdf_path.resolve()
         cmd = [
             "python3",
             str(self.script_path),
-            "--pdf_path", str(pdf_path),
+            "--pdf_path", str(absolute_pdf_path),
             "--model", self.model,
             "--toc-check-pages", str(self.toc_check_pages),
             "--max-pages-per-node", str(self.max_pages_per_node),
@@ -123,6 +124,26 @@ class PageIndexParser:
         ]
         
         try:
+            # 设置环境变量（支持自定义 API endpoint）
+            env = os.environ.copy()
+
+            # 从 .env 加载配置
+            from dotenv import load_dotenv
+            load_dotenv()
+
+            # 优先使用 API_KEY，否则使用 OPENAI_API_KEY
+            api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+            if api_key:
+                env["OPENAI_API_KEY"] = api_key
+
+            # 如果有自定义 BASE_URL，设置 OPENAI_BASE_URL
+            base_url = os.getenv("BASE_URL")
+            if base_url:
+                # 移除 /chat/completions 后缀（如果存在）
+                base_url = base_url.replace("/chat/completions", "")
+                env["OPENAI_BASE_URL"] = base_url
+                logger.info(f"Using custom API endpoint: {base_url}")
+
             # 执行PageIndex脚本
             logger.info(f"Running command: {' '.join(cmd)}")
             result = subprocess.run(
@@ -130,22 +151,41 @@ class PageIndexParser:
                 capture_output=True,
                 text=True,
                 check=True,
-                cwd=self.script_path.parent
+                cwd=self.script_path.parent,
+                env=env
             )
             
             logger.info(f"PageIndex output: {result.stdout}")
             
             # 查找生成的JSON文件
-            # PageIndex通常会在当前目录生成 <filename>_tree.json
-            generated_file = self.script_path.parent / f"{pdf_path.stem}_tree.json"
-            
-            if not generated_file.exists():
-                # 尝试其他可能的文件名
-                possible_files = list(self.script_path.parent.glob(f"*{pdf_path.stem}*.json"))
+            # PageIndex通常会在results目录生成 <filename>_structure.json
+            pageindex_dir = self.script_path.parent
+            results_dir = pageindex_dir / "results"
+
+            # 尝试多个可能的位置和文件名
+            possible_locations = [
+                results_dir / f"{pdf_path.stem}_structure.json",
+                pageindex_dir / f"{pdf_path.stem}_structure.json",
+                results_dir / f"{pdf_path.stem}_tree.json",
+                pageindex_dir / f"{pdf_path.stem}_tree.json"
+            ]
+
+            generated_file = None
+            for loc in possible_locations:
+                if loc.exists():
+                    generated_file = loc
+                    break
+
+            if not generated_file:
+                # 尝试通过glob查找
+                possible_files = list(results_dir.glob(f"*{pdf_path.stem}*.json")) if results_dir.exists() else []
+                if not possible_files:
+                    possible_files = list(pageindex_dir.glob(f"*{pdf_path.stem}*.json"))
+
                 if possible_files:
                     generated_file = possible_files[0]
                 else:
-                    raise FileNotFoundError("PageIndex output file not found")
+                    raise FileNotFoundError(f"PageIndex output file not found. Searched in: {pageindex_dir}, {results_dir}")
             
             # 移动文件到输出目录
             if generated_file != output_file:
@@ -166,36 +206,60 @@ class PageIndexParser:
         """加载并解析树结构JSON"""
         with open(json_path, 'r', encoding='utf-8') as f:
             raw_data = json.load(f)
-        
+
         # 递归解析树节点
-        def parse_node(node_data: Dict[str, Any], parent_id: Optional[str] = None, level: int = 0) -> TreeNode:
+        def parse_node(node_data: Dict[str, Any], parent_id: Optional[str] = None, level: int = 0, counter: List[int] = [0]) -> TreeNode:
             children = node_data.get('nodes', [])
+
+            # 生成 node_id：如果没有 node_id，使用 document_id + 序号
+            node_id = node_data.get('node_id', '')
+            if not node_id:
+                counter[0] += 1
+                node_id = f"{document_id}_node_{counter[0]:04d}"
+
             node = TreeNode(
-                node_id=node_data.get('node_id', ''),
+                node_id=node_id,
                 parent_id=parent_id,
                 title=node_data.get('title', ''),
                 summary=node_data.get('summary', ''),
                 level=level,
                 start_index=node_data.get('start_index', 0),
                 end_index=node_data.get('end_index', 0),
-                nodes=[parse_node(child, node_data.get('node_id'), level+1) for child in children]
+                nodes=[parse_node(child, node_id, level+1, counter) for child in children]
             )
             return node
-        
-        # 解析根节点列表
-        if isinstance(raw_data, dict):
+
+        # 检查是否是 PageIndex 新格式 (包含 doc_name, doc_description, structure)
+        if isinstance(raw_data, dict) and 'structure' in raw_data:
+            # PageIndex 新格式：{doc_name, doc_description, structure: [...]}
+            description = raw_data.get('doc_description', None)
+            structure_data = raw_data['structure']
+
+            if isinstance(structure_data, list):
+                counter = [0]  # 重置计数器
+                root_nodes = [parse_node(node, counter=counter) for node in structure_data]
+                total_pages = max(node.end_index for node in root_nodes) if root_nodes else 0
+            else:
+                counter = [0]
+                root_nodes = [parse_node(structure_data, counter=counter)]
+                total_pages = structure_data.get('end_index', 0)
+
+        # 解析根节点列表（旧格式）
+        elif isinstance(raw_data, dict):
             # 单根节点情况
-            root_nodes = [parse_node(raw_data)]
+            counter = [0]
+            root_nodes = [parse_node(raw_data, counter=counter)]
             total_pages = raw_data.get('end_index', 0)
             description = raw_data.get('description', None)
         elif isinstance(raw_data, list):
             # 多根节点情况
-            root_nodes = [parse_node(node) for node in raw_data]
+            counter = [0]
+            root_nodes = [parse_node(node, counter=counter) for node in raw_data]
             total_pages = max(node.end_index for node in root_nodes) if root_nodes else 0
             description = None
         else:
             raise ValueError("Invalid tree structure format")
-        
+
         return DocumentTree(
             document_id=document_id,
             description=description,

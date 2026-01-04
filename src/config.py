@@ -3,87 +3,117 @@
 使用Pydantic Settings进行类型安全的配置管理
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
+from pathlib import Path
+import os
+
+# 确保加载项目根目录的 .env 文件
+from dotenv import load_dotenv
+
+# 获取项目根目录（config.py 的父目录的父目录）
+PROJECT_ROOT = Path(__file__).parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
+
+# 强制加载 .env 文件（override=True 确保覆盖已有的环境变量）
+load_dotenv(ENV_FILE, override=True)
 
 
 class OpenAIConfig(BaseSettings):
-    """OpenAI配置"""
-    api_key: str = Field(..., env="OPENAI_API_KEY")
-    model: str = Field(default="gpt-4o-2024-11-20", env="OPENAI_MODEL")
-    embedding_model: str = Field(
-        default="text-embedding-3-small",
-        env="OPENAI_EMBEDDING_MODEL"
-    )
-    
-    class Config:
-        env_file = ".env"
+    """OpenAI 兼容 API 配置（支持 OpenAI、Qwen 等）"""
+    model_config = SettingsConfigDict(extra='ignore')
+
+    # 优先使用自定义 API_KEY，如果没有则使用 OPENAI_API_KEY
+    api_key: str = Field(default="")
+    openai_api_key: str = Field(default="")
+
+    # 自定义 base_url（用于 Qwen、Azure OpenAI 等）
+    base_url: Optional[str] = Field(default=None)
+
+    # 模型名称
+    model_name: str = Field(default="gpt-4o-2024-11-20")
+    openai_model: str = Field(default="gpt-4o-2024-11-20")
+
+    openai_embedding_model: str = Field(default="text-embedding-3-small")
+
+    def get_api_key(self) -> str:
+        """获取实际使用的 API Key"""
+        return self.api_key or self.openai_api_key
+
+    def get_model(self) -> str:
+        """获取实际使用的模型名称"""
+        return self.model_name if self.model_name != "gpt-4o-2024-11-20" else self.openai_model
 
 
-class PySeekDBConfig(BaseSettings):
-    """pyseekdb本地存储配置"""
-    persist_directory: str = Field(
-        default="./data/pyseekdb",
-        env="PYSEEKDB_PERSIST_DIR"
-    )
-    embedding_dims: int = Field(default=1536, env="EMBEDDING_DIMS")
+class SeekDBConfig(BaseSettings):
+    """seekdb配置（支持Embedded和Server两种模式）"""
+    model_config = SettingsConfigDict(extra='ignore')
 
-    class Config:
-        env_file = ".env"
+    # 运行模式: "embedded" 或 "server"
+    seekdb_mode: str = Field(default="server")
+
+    # Embedded模式配置
+    seekdb_persist_dir: str = Field(default="./data/pyseekdb")
+
+    # Server模式配置
+    seekdb_host: str = Field(default="127.0.0.1")
+    seekdb_port: int = Field(default=2881)
+    seekdb_user: str = Field(default="root")
+    seekdb_password: str = Field(default="")
+
+    # 通用配置
+    seekdb_database: str = Field(default="rag_system")
+    embedding_dims: int = Field(default=1536)
 
 
 class PageIndexConfig(BaseSettings):
     """PageIndex配置"""
-    model: str = Field(default="gpt-4o-2024-11-20", env="PAGEINDEX_MODEL")
-    toc_check_pages: int = Field(default=20, env="PAGEINDEX_TOC_CHECK_PAGES")
-    max_pages_per_node: int = Field(default=10, env="PAGEINDEX_MAX_PAGES_PER_NODE")
-    max_tokens_per_node: int = Field(default=20000, env="PAGEINDEX_MAX_TOKENS_PER_NODE")
-    
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(extra='ignore')
+
+    pageindex_model: str = Field(default="gpt-4o-2024-11-20")
+    pageindex_toc_check_pages: int = Field(default=20)
+    pageindex_max_pages_per_node: int = Field(default=10)
+    pageindex_max_tokens_per_node: int = Field(default=20000)
 
 
 class SearchConfig(BaseSettings):
     """检索配置"""
+    model_config = SettingsConfigDict(extra='ignore')
+
     # 混合检索权重
-    tree_weight: float = Field(default=0.4, env="TREE_SEARCH_WEIGHT")
-    vector_weight: float = Field(default=0.6, env="VECTOR_SEARCH_WEIGHT")
-    
+    tree_search_weight: float = Field(default=0.4)
+    vector_search_weight: float = Field(default=0.6)
+
     # 树搜索参数
-    tree_max_depth: int = Field(default=3, env="TREE_MAX_DEPTH")
-    tree_top_k: int = Field(default=5, env="TREE_TOP_K_PER_LEVEL")
-    tree_threshold: float = Field(default=0.6, env="TREE_SIMILARITY_THRESHOLD")
-    
+    tree_max_depth: int = Field(default=3)
+    tree_top_k_per_level: int = Field(default=5)
+    tree_similarity_threshold: float = Field(default=0.6)
+
     # 向量检索参数
-    vector_top_k: int = Field(default=20, env="VECTOR_TOP_K")
-    chunk_size: int = Field(default=500, env="CHUNK_SIZE")
-    chunk_overlap: int = Field(default=50, env="CHUNK_OVERLAP")
-    
-    class Config:
-        env_file = ".env"
+    vector_top_k: int = Field(default=20)
+    chunk_size: int = Field(default=500)
+    chunk_overlap: int = Field(default=50)
 
 
 class CacheConfig(BaseSettings):
     """缓存配置（使用pyseekdb存储）"""
-    enable_cache: bool = Field(default=True, env="ENABLE_CACHE")
-    cache_ttl: int = Field(default=900, env="CACHE_TTL")  # 15分钟
-    cache_collection: str = Field(default="cache_data", env="CACHE_COLLECTION")
+    model_config = SettingsConfigDict(extra='ignore')
 
-    class Config:
-        env_file = ".env"
+    enable_cache: bool = Field(default=True)
+    cache_ttl: int = Field(default=900)  # 15分钟
+    cache_collection: str = Field(default="cache_data")
 
 
 class Config(BaseSettings):
     """主配置类 - 聚合所有子配置"""
-    openai: OpenAIConfig = OpenAIConfig()
-    pyseekdb: PySeekDBConfig = PySeekDBConfig()
-    pageindex: PageIndexConfig = PageIndexConfig()
-    search: SearchConfig = SearchConfig()
-    cache: CacheConfig = CacheConfig()
+    model_config = SettingsConfigDict(extra='ignore')
 
-    class Config:
-        env_file = ".env"
+    openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
+    seekdb: SeekDBConfig = Field(default_factory=SeekDBConfig)
+    pageindex: PageIndexConfig = Field(default_factory=PageIndexConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
 
 
 # 全局配置实例

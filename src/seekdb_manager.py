@@ -1,9 +1,12 @@
 """
-pyseekdb存储管理模块
-使用pyseekdb本地持久化存储，无需部署数据库服务器
+seekdb存储管理模块
+支持两种模式：
+1. Embedded模式：本地文件存储，无需部署服务器
+2. Server模式：连接Docker部署的seekdb服务器
 """
 
 import pyseekdb
+from pyseekdb import HNSWConfiguration
 from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 from pydantic import BaseModel
@@ -49,60 +52,94 @@ class SearchResult(BaseModel):
 
 
 class SeekDBManager:
-    """pyseekdb本地数据库管理器"""
+    """seekdb数据库管理器（支持Embedded和Server两种模式）"""
 
     def __init__(
         self,
+        mode: str = "embedded",
+        # Embedded模式参数
         persist_directory: str = "./data/pyseekdb",
+        # Server模式参数
+        host: str = "127.0.0.1",
+        port: int = 2881,
+        user: str = "root",
+        password: str = "",
+        # 通用参数
         database: str = "rag_system"
     ):
         """
-        初始化pyseekdb管理器（嵌入式模式）
+        初始化seekdb管理器
 
         Args:
-            persist_directory: 本地数据存储目录
+            mode: 运行模式 ("embedded" 或 "server")
+            persist_directory: 本地数据存储目录（Embedded模式）
+            host: seekdb服务器地址（Server模式）
+            port: seekdb服务器端口（Server模式）
+            user: 用户名（Server模式）
+            password: 密码（Server模式）
             database: 数据库名称
         """
-        # 创建数据目录
-        Path(persist_directory).mkdir(parents=True, exist_ok=True)
+        self.mode = mode.lower()
 
-        # 使用嵌入式客户端
-        self.client = pyseekdb.Client(
-            path=persist_directory,
-            database=database
-        )
+        if self.mode == "embedded":
+            # 创建数据目录
+            Path(persist_directory).mkdir(parents=True, exist_ok=True)
+
+            # 使用嵌入式客户端
+            self.client = pyseekdb.Client(
+                path=persist_directory,
+                database=database
+            )
+            logger.info(f"Initialized seekdb in EMBEDDED mode at {persist_directory} (database: {database})")
+
+        elif self.mode == "server":
+            # 连接到seekdb服务器
+            self.client = pyseekdb.Client(
+                host=host,
+                port=port,
+                database=database,
+                user=user,
+                password=password
+            )
+            logger.info(f"Connected to seekdb SERVER at {host}:{port} (database: {database}, user: {user})")
+
+        else:
+            raise ValueError(f"Invalid mode: {mode}. Must be 'embedded' or 'server'")
 
         self.nodes_collection = "tree_nodes"
         self.chunks_collection = "content_chunks"
-
-        logger.info(f"Initialized pyseekdb at {persist_directory} (database: {database})")
     
     def initialize_collections(self, embedding_dims: int = 1536):
         """
         初始化Collections
-        
+
         Args:
             embedding_dims: 向量维度
         """
-        # 创建树节点Collection
+        # 创建HNSW配置
+        config = HNSWConfiguration(dimension=embedding_dims, distance="cosine")
+
+        # 创建树节点Collection (不使用pyseekdb的embedding function，我们自己管理embeddings)
         try:
             self.client.create_collection(
                 name=self.nodes_collection,
-                embedding_model_dims=embedding_dims,
+                configuration=config,
+                embedding_function=None,  # 明确禁用pyseekdb的embedding function
                 description="Document tree nodes with summary embeddings"
             )
-            logger.info(f"Created collection: {self.nodes_collection}")
+            logger.info(f"Created collection: {self.nodes_collection} with {embedding_dims} dimensions")
         except Exception as e:
             logger.warning(f"Collection {self.nodes_collection} may already exist: {e}")
-        
-        # 创建内容块Collection
+
+        # 创建内容块Collection (不使用pyseekdb的embedding function)
         try:
             self.client.create_collection(
                 name=self.chunks_collection,
-                embedding_model_dims=embedding_dims,
+                configuration=config,
+                embedding_function=None,  # 明确禁用pyseekdb的embedding function
                 description="Document content chunks with embeddings"
             )
-            logger.info(f"Created collection: {self.chunks_collection}")
+            logger.info(f"Created collection: {self.chunks_collection} with {embedding_dims} dimensions")
         except Exception as e:
             logger.warning(f"Collection {self.chunks_collection} may already exist: {e}")
     
@@ -125,28 +162,38 @@ class SeekDBManager:
             raise ValueError("nodes and embeddings must have the same length")
         
         collection = self.client.get_collection(self.nodes_collection)
-        
-        documents = []
-        for node, embedding in zip(nodes, embeddings):
-            doc = {
-                "id": node.node_id,
-                "document": node.summary,
-                "embedding": embedding,
-                "metadata": {
-                    "parent_id": node.parent_id,
-                    "document_id": node.document_id,
-                    "title": node.title,
-                    "level": node.level,
-                    "start_page": node.start_page,
-                    "end_page": node.end_page,
-                    "child_count": node.child_count,
-                    **node.metadata
-                }
+
+        # 准备数据（分离 documents, embeddings, metadatas）
+        ids = [node.node_id for node in nodes]
+        documents = [node.summary for node in nodes]
+        metadatas = [
+            {
+                "parent_id": node.parent_id,
+                "document_id": node.document_id,
+                "title": node.title,
+                "level": node.level,
+                "start_page": node.start_page,
+                "end_page": node.end_page,
+                "child_count": node.child_count,
+                **node.metadata
             }
-            documents.append(doc)
-        
-        # 批量插入
-        collection.add(documents=documents)
+            for node in nodes
+        ]
+
+        # 调试信息
+        logger.info(f"Preparing to insert {len(ids)} nodes")
+        logger.debug(f"IDs: {ids}")
+        logger.debug(f"Documents count: {len(documents)}")
+        logger.debug(f"Embeddings count: {len(embeddings)}")
+        logger.debug(f"Metadatas count: {len(metadatas)}")
+
+        # 批量插入（ids 是第一个位置参数）
+        collection.add(
+            ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents
+        )
         logger.info(f"Inserted {len(nodes)} nodes into {self.nodes_collection}")
         
         return len(nodes)
@@ -158,38 +205,45 @@ class SeekDBManager:
     ) -> int:
         """
         批量插入内容块
-        
+
         Args:
             chunks: 内容块列表
             embeddings: 对应的向量列表
-        
+
         Returns:
             插入的块数量
         """
+        if len(chunks) == 0:
+            logger.warning("No chunks to insert")
+            return 0
+
         if len(chunks) != len(embeddings):
             raise ValueError("chunks and embeddings must have the same length")
-        
+
         collection = self.client.get_collection(self.chunks_collection)
-        
-        documents = []
-        for chunk, embedding in zip(chunks, embeddings):
-            doc = {
-                "id": chunk.chunk_id,
-                "document": chunk.content,
-                "embedding": embedding,
-                "metadata": {
-                    "node_id": chunk.node_id,
-                    "document_id": chunk.document_id,
-                    "page_num": chunk.page_num,
-                    "chunk_index": chunk.chunk_index,
-                    "word_count": chunk.word_count,
-                    **chunk.metadata
-                }
+
+        # 准备数据（分离 documents, embeddings, metadatas）
+        ids = [chunk.chunk_id for chunk in chunks]
+        documents = [chunk.content for chunk in chunks]
+        metadatas = [
+            {
+                "node_id": chunk.node_id,
+                "document_id": chunk.document_id,
+                "page_num": chunk.page_num,
+                "chunk_index": chunk.chunk_index,
+                "word_count": chunk.word_count,
+                **chunk.metadata
             }
-            documents.append(doc)
-        
-        # 批量插入
-        collection.add(documents=documents)
+            for chunk in chunks
+        ]
+
+        # 批量插入（ids 是第一个位置参数）
+        collection.add(
+            ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents
+        )
         logger.info(f"Inserted {len(chunks)} chunks into {self.chunks_collection}")
         
         return len(chunks)

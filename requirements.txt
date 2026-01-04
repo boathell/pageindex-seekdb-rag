@@ -1,0 +1,43 @@
+# PageIndex + pyseekdb 混合RAG系统依赖
+
+# 核心依赖
+pyseekdb>=0.1.0              # 本地向量数据库，无需部署服务器
+openai>=1.0.0                # OpenAI API（Embedding和LLM）
+python-dotenv>=1.0.0         # 环境变量管理
+pydantic>=2.0.0              # 数据验证
+pydantic-settings>=2.0.0     # 配置管理
+
+# 数据处理
+numpy>=1.24.0                # 数值计算
+pandas>=2.0.0                # 数据分析
+
+# PageIndex依赖
+PyPDF2>=3.0.0                # PDF解析
+pdfplumber>=0.10.0           # PDF文本提取
+
+# 向量和Embedding
+sentence-transformers>=2.2.0 # 可选的本地embedding模型
+
+# 日志
+loguru>=0.7.0                # 日志记录
+
+# 进度条
+tqdm>=4.65.0                 # 进度显示
+
+# 测试
+pytest>=7.4.0                # 测试框架
+pytest-cov>=4.1.0            # 测试覆盖率
+
+# 开发工具
+black>=23.0.0                # 代码格式化
+flake8>=6.0.0                # 代码检查
+mypy>=1.5.0                  # 类型检查
+
+# Jupyter (用于评测分析)
+jupyter>=1.0.0               # Jupyter笔记本
+matplotlib>=3.7.0            # 可视化
+seaborn>=0.12.0              # 统计可视化
+
+# 可选：LangChain集成
+langchain>=0.1.0             # LangChain框架
+langchain-openai>=0.0.5      # OpenAI集成

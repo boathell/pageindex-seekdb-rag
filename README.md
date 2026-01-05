@@ -212,6 +212,28 @@ for item in results['results']:
 
 详细的 API 文档请参考：[API文档](docs/api.md)
 
+### 示例0.5：使用 Jupyter Notebook 交互式演示 🎯
+
+推荐从 Jupyter Notebook 开始，获得完整的交互式体验：
+
+```bash
+# 启动 Jupyter
+jupyter notebook
+
+# 打开 notebooks/demo.ipynb
+# 或直接运行
+jupyter notebook notebooks/demo.ipynb
+```
+
+**demo.ipynb 包含**：
+- ✅ 完整的系统演示流程
+- ✅ 三种检索策略对比
+- ✅ 结果可视化分析
+- ✅ 权重调优演示
+- ✅ 多查询测试
+
+详细使用指南：[notebooks/README.md](notebooks/README.md)
+
 ### 示例1：直接使用 Python SDK - 文档索引
 
 ```python
@@ -343,8 +365,9 @@ pageindex-seekdb-rag/
 │   └── results/               # 评测结果
 │
 ├── notebooks/                  # Jupyter notebooks
-│   ├── demo.ipynb             # 系统演示
-│   └── benchmark.ipynb        # 性能评测
+│   ├── demo.ipynb             # 系统演示 ✅
+│   ├── benchmark.ipynb        # 性能评测 (待实现)
+│   └── README.md              # 笔记本使用指南
 │
 ├── configs/                    # 配置文件
 ├── docs/                       # 文档

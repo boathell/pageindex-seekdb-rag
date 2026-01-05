@@ -3,14 +3,19 @@ Unit tests for SeekDBManager
 """
 
 import pytest
+import platform
 from pathlib import Path
 
 from src.seekdb_manager import SeekDBManager, NodeRecord, ChunkRecord
+
+# Skip embedded mode tests on non-Linux platforms (pylibseekdb only supports Linux)
+SKIP_EMBEDDED = platform.system() != "Linux"
 
 
 class TestSeekDBManagerInit:
     """Test SeekDBManager initialization"""
 
+    @pytest.mark.skipif(SKIP_EMBEDDED, reason="Embedded mode requires Linux")
     def test_init_embedded_mode(self, temp_dir):
         """Test initialization in embedded mode"""
         manager = SeekDBManager(
@@ -58,6 +63,7 @@ class TestSeekDBManagerCollections:
         # Check collections exist
         assert seekdb_manager_embedded.client is not None
 
+    @pytest.mark.skipif(SKIP_EMBEDDED, reason="Embedded mode requires Linux")
     def test_initialize_collections_custom_dims(self, temp_dir):
         """Test creating collections with custom dimensions"""
         manager = SeekDBManager(

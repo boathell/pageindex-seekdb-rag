@@ -3,6 +3,7 @@ Pytest configuration and shared fixtures
 """
 
 import pytest
+import platform
 import tempfile
 from pathlib import Path
 import sys
@@ -14,6 +15,9 @@ sys.path.insert(0, str(project_root))
 from src.config import config
 from src.embedding_manager import EmbeddingManager
 from src.seekdb_manager import SeekDBManager
+
+# Skip embedded mode tests on non-Linux platforms
+SKIP_EMBEDDED = platform.system() != "Linux"
 
 
 @pytest.fixture(scope="session")
@@ -97,6 +101,9 @@ def embedding_manager(test_config):
 @pytest.fixture
 def seekdb_manager_embedded(temp_dir):
     """Create a SeekDBManager instance in embedded mode"""
+    if SKIP_EMBEDDED:
+        pytest.skip("Embedded mode requires Linux (pylibseekdb not available on this platform)")
+
     manager = SeekDBManager(
         mode="embedded",
         persist_directory=str(temp_dir / "test_seekdb")

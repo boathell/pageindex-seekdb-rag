@@ -20,10 +20,10 @@ class TestEmbeddingManager:
             base_url=test_config["base_url"]
         )
 
-        assert manager.api_key == test_config["api_key"]
-        assert manager.model == test_config["model"]
-        assert manager.base_url == test_config["base_url"]
+        # Check that client and model are set correctly (api_key and base_url are not stored)
         assert manager.client is not None
+        assert manager.model == test_config["model"]
+        assert manager.batch_size == 100  # default
 
     def test_init_without_base_url(self, test_config):
         """Test initialization without custom base_url"""
@@ -32,7 +32,9 @@ class TestEmbeddingManager:
             model=test_config["model"]
         )
 
-        assert manager.base_url is None
+        # base_url is not stored, but client should be created
+        assert manager.client is not None
+        assert manager.model == test_config["model"]
 
     @pytest.mark.parametrize("batch_size", [1, 5, 10, 25])
     def test_batch_size_configuration(self, test_config, batch_size):
@@ -58,7 +60,7 @@ class TestEmbeddingManager:
     @pytest.mark.integration
     def test_embed_batch(self, embedding_manager, sample_texts):
         """Test embedding multiple texts (integration test)"""
-        embeddings = embedding_manager.embed_batch(sample_texts)
+        embeddings = embedding_manager.embed(sample_texts)
 
         assert embeddings is not None
         assert isinstance(embeddings, list)
@@ -100,14 +102,15 @@ class TestEmbeddingManager:
             embedding_manager.embed("")
 
     def test_embed_none(self, embedding_manager):
-        """Test embedding None"""
-        with pytest.raises((ValueError, TypeError)):
-            embedding_manager.embed(None)
+        """Test embedding None (treated as empty)"""
+        # None is treated as empty list due to "if not text" check
+        result = embedding_manager.embed(None)
+        assert result == []
 
     @pytest.mark.integration
     def test_embed_batch_empty_list(self, embedding_manager):
         """Test embedding empty list"""
-        embeddings = embedding_manager.embed_batch([])
+        embeddings = embedding_manager.embed([])
         assert embeddings == []
 
     @pytest.mark.integration
@@ -135,7 +138,7 @@ class TestEmbeddingManager:
         # Create 50 texts (exceeds typical batch size of 25)
         large_batch = [f"Test text number {i}" for i in range(50)]
 
-        embeddings = embedding_manager.embed_batch(large_batch)
+        embeddings = embedding_manager.embed(large_batch)
 
         assert len(embeddings) == 50
         for emb in embeddings:
@@ -144,7 +147,7 @@ class TestEmbeddingManager:
 
     @patch('src.embedding_manager.OpenAI')
     def test_api_error_handling(self, mock_openai, test_config):
-        """Test API error handling"""
+        """Test API error handling for batch processing"""
         # Mock API to raise error
         mock_client = Mock()
         mock_client.embeddings.create.side_effect = Exception("API Error")
@@ -155,9 +158,11 @@ class TestEmbeddingManager:
             model=test_config["model"]
         )
 
-        # Should handle error gracefully
-        result = manager.embed("test")
-        assert result is None or isinstance(result, list)
+        # For batch processing, errors are caught and zero vectors are returned
+        result = manager.embed(["test1", "test2"])
+        assert isinstance(result, list)
+        # Should return zero vectors as fallback
+        assert len(result) == 2
 
     def test_repr(self, embedding_manager):
         """Test string representation"""

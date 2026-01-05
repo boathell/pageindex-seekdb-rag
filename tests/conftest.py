@@ -3,7 +3,7 @@ Pytest configuration and shared fixtures
 """
 
 import pytest
-import platform
+import subprocess
 import tempfile
 from pathlib import Path
 import sys
@@ -16,8 +16,37 @@ from src.config import config
 from src.embedding_manager import EmbeddingManager
 from src.seekdb_manager import SeekDBManager
 
-# Skip embedded mode tests on non-Linux platforms
-SKIP_EMBEDDED = platform.system() != "Linux"
+
+def is_docker_running() -> bool:
+    """Check if Docker is running"""
+    try:
+        result = subprocess.run(
+            ["docker", "ps"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+
+def is_seekdb_container_running() -> bool:
+    """Check if seekdb container is running"""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", "name=seekdb", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return "seekdb" in result.stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+
+# Skip seekdb tests if Docker or container is not available
+SKIP_SEEKDB = not is_docker_running() or not is_seekdb_container_running()
 
 
 @pytest.fixture(scope="session")
@@ -98,15 +127,31 @@ def embedding_manager(test_config):
     )
 
 
-@pytest.fixture
-def seekdb_manager_embedded(temp_dir):
-    """Create a SeekDBManager instance in embedded mode"""
-    if SKIP_EMBEDDED:
-        pytest.skip("Embedded mode requires Linux (pylibseekdb not available on this platform)")
+@pytest.fixture(scope="module")
+def seekdb_manager():
+    """Create a SeekDBManager instance using server mode (Docker)"""
+    if SKIP_SEEKDB:
+        pytest.skip("SeekDB tests require Docker with seekdb container running. "
+                   "Start with: docker-compose up -d")
 
+    # Use server mode connecting to Docker container
     manager = SeekDBManager(
-        mode="embedded",
-        persist_directory=str(temp_dir / "test_seekdb")
+        mode="server",
+        host=config.seekdb.seekdb_host,
+        port=config.seekdb.seekdb_port,
+        user=config.seekdb.seekdb_user,
+        password=config.seekdb.seekdb_password,
+        database=config.seekdb.seekdb_database
     )
+
+    # Initialize collections for testing
+    try:
+        manager.initialize_collections(embedding_dims=config.seekdb.embedding_dims)
+    except Exception:
+        # Collections might already exist, that's OK
+        pass
+
     yield manager
-    # Cleanup is handled by temp_dir fixture
+
+    # Cleanup: Delete test data (optional)
+    # Note: In a real scenario, you might want to clean up test documents
